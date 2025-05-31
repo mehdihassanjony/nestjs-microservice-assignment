@@ -1,0 +1,87 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      # Fine-tuned logging
+      RABBITMQ_LOG: "error,warning" # Show only important messages
+      # Explicitly permit deprecated features
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: >
+        -rabbitmq_feature_flags [{deprecated_features_permit,[transient_nonexcl_queues,management_metrics_collection]}]
+        -kernel error_logger silent
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    # Optimized Mnesia configuration
+    command: >
+      bash -c "echo '[]' > /etc/rabbitmq/cluster_nodes.config &&
+      rabbitmq-server -eval 'application:set_env(mnesia, dump_log_write_threshold, 50000)'"
+
+  mongodb-auth:
+    image: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - auth-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: auth
+      MONGO_LOG_LEVEL: quiet
+    command: ["--quiet", "--logpath", "/dev/null"] # Redirect all logs to null
+    logging:
+      driver: "none"
+
+  mongodb-products:
+    image: mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - product-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: products
+      MONGO_LOG_LEVEL: quiet
+    command: ["--quiet", "--logpath", "/dev/null"] # Redirect all logs to null
+    logging:
+      driver: "none"
+
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true # Important for file watching in Docker
+      - MONGO_URI=mongodb://mongodb-auth:27017/auth
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - ./auth-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  product-service:
+    build: ./product-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true # Essential for file watching in Docker
+      - MONGO_URI=mongodb://mongodb-products:27017/products
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - ./product-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  rabbitmq-data:
+  auth-data:
+  product-data:
