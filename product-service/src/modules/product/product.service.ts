@@ -1,7 +1,6 @@
 import {
   Injectable,
   Inject,
-  UnauthorizedException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,8 +8,9 @@ import { Model } from 'mongoose';
 import { Product } from './schemas/product.schema';
 import { CreateProductDto } from './dtos/create-product.dto';
 import { ClientProxy } from '@nestjs/microservices';
-import { catchError, lastValueFrom, tap, timeout } from 'rxjs';
+import { catchError, lastValueFrom, timeout } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
+import { v4 as uuidv4 } from 'uuid';
 // import { firstValueFrom } from 'rxjs';
 
 @Injectable()
@@ -65,23 +65,17 @@ export class ProductService {
 
   async validateToken(token: string) {
     const correlationId = uuidv4();
-    const replyQueue = 'amq.rabbitmq.reply-to'; // Special temporary queue
 
     console.log('📨 Sending token with correlationId:', correlationId);
 
     const response = await lastValueFrom(
       this.rabbitClient
-        .send(
-          'auth_queue',
-          { token },
-          {
-            replyTo: replyQueue,
-            correlationId,
-            persistent: true,
-          },
-        )
+        .send<{ valid: boolean; userId?: string }>('validate_token', {
+          token,
+          correlationId,
+        })
         .pipe(
-          timeout(5000), // Add timeout
+          timeout(5000),
           catchError((err) => {
             console.error('🚨 RabbitMQ error:', err);
             throw new InternalServerErrorException('Token validation failed');
