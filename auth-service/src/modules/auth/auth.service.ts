@@ -22,6 +22,21 @@ export class AuthService {
   private channel: amqp.Channel;
 
   async onModuleInit() {
+    let retries = 5;
+    while (retries > 0) {
+      try {
+        await this.rabbitClient.connect();
+        console.log('✅ Connected to RabbitMQ');
+        break;
+      } catch (err) {
+        retries--;
+        console.warn(`⚠️ RabbitMQ connection failed (${retries} retries left)`);
+        if (retries === 0) {
+          throw err;
+        }
+        await new Promise((res) => setTimeout(res, 5000)); // Wait 5 seconds
+      }
+    }
     const connection = await amqp.connect(process.env.RABBITMQ_URI);
     this.channel = await connection.createChannel();
     await this.channel.assertQueue('auth_queue', { durable: false });
@@ -93,36 +108,36 @@ export class AuthService {
     };
   }
 
-  async validateToken(token: string) {
-    if (!token) {
-      throw new Error('No token provided');
-    }
-    return this.jwtService.verify(token); // Now gets the proper token string
-  }
-
   // async validateToken(token: string) {
-  //   console.log(token);
-  //   try {
-  //     const payload = this.jwtService.verify(token);
-  //     const user = await this.userModel.findById(payload.sub);
-
-  //     if (!user) {
-  //       return { valid: false };
-  //     }
-
-  //     // Check user.role (singular) instead of user.roles
-  //     const canCreateProduct = user.role === 'seller' || user.role === 'admin';
-
-  //     return {
-  //       valid: true,
-  //       userId: payload.sub,
-  //       canCreateProduct,
-  //     };
-  //   } catch (error) {
-  //     console.log(error);
-  //     return { valid: false };
+  //   if (!token) {
+  //     throw new Error('No token provided');
   //   }
+  //   return this.jwtService.verify(token); // Now gets the proper token string
   // }
+
+  async validateToken(token: string) {
+    console.log(token);
+    try {
+      const payload = this.jwtService.verify(token);
+      const user = await this.userModel.findById(payload.sub);
+
+      if (!user) {
+        return { valid: false };
+      }
+
+      // Check user.role (singular) instead of user.roles
+      const canCreateProduct = user.role === 'seller' || user.role === 'admin';
+
+      return {
+        valid: true,
+        userId: payload.sub,
+        canCreateProduct,
+      };
+    } catch (error) {
+      console.log(error);
+      return { valid: false };
+    }
+  }
 
   // private setupTokenValidationListener() {
   //   this.rabbitClient

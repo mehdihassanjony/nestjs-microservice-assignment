@@ -22,18 +22,20 @@ export class ProductService {
   ) {}
 
   async onModuleInit() {
-    // Temporary debug log
-    console.log('Config values:', {
-      uri: this.configService.get('RABBITMQ_URI'),
-      queue: this.configService.get('RABBITMQ_QUEUE'),
-    });
-
-    try {
-      await this.rabbitClient.connect();
-      console.log('✅ Connected to RabbitMQ!');
-    } catch (err) {
-      console.error('❌ Connection failed:', err);
-      throw err;
+    let retries = 5;
+    while (retries > 0) {
+      try {
+        await this.rabbitClient.connect();
+        console.log('✅ Connected to RabbitMQ');
+        break;
+      } catch (err) {
+        retries--;
+        console.warn(`⚠️ RabbitMQ connection failed (${retries} retries left)`);
+        if (retries === 0) {
+          throw err;
+        }
+        await new Promise((res) => setTimeout(res, 5000)); // Wait 5 seconds
+      }
     }
   }
 
