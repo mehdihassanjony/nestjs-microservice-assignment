@@ -1,28 +1,18 @@
-FROM node:20-bullseye-slim
-
-# Add support for native modules and file watching
-RUN apt-get update && \
-    apt-get install -y python3 make g++ inotify-tools && \
-    rm -rf /var/lib/apt/lists/*
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files first for better caching
+# Install dependencies first for better caching
 COPY package*.json ./
+RUN apk add --no-cache python3 make g++ && \
+    npm install --legacy-peer-deps
 
-# Install dependencies
-RUN npm install --legacy-peer-deps
-
-# Install nodemon globally for better watching
-RUN npm install -g nodemon
-
-# Copy all source files
+# Copy source files
 COPY . .
 
-# Build the application (optional for dev, but good to have)
+# Build and expose
 RUN npm run build
+EXPOSE 3001  
 
-EXPOSE 3001
-
-# Start in development mode with enhanced watching
-CMD ["nodemon", "--exec", "npm", "run", "start:dev", "--watch", "src"]
+# Use node directly for production, or nodemon for dev
+CMD ["npm", "run", "start:dev"]
